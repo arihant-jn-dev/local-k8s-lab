@@ -271,3 +271,35 @@ kubectl exec -n local-k8s-lab deployment/worker -- printenv | grep -E "PG|REDIS"
 # worker replica even with several running:
 kubectl scale deployment worker --replicas=3 -n local-k8s-lab
 ```
+
+## Simulated CD (Phase 8)
+
+```
+# Run it in the foreground so you can watch its log directly
+./scripts/simulated-cd.sh main 15
+
+# Check what commit it thinks is currently applied
+cat .simulated-cd-last-applied-commit
+
+# Force it to re-check "from scratch" (e.g. after manually editing the
+# cluster and wanting a full re-apply, or if the state file gets weird)
+rm .simulated-cd-last-applied-commit
+# next loop iteration will fetch, see this as a "new" state, and since
+# it's the first run again it'll just record a fresh baseline - to force
+# an actual re-apply, edit the file to contain an older commit SHA instead:
+git log --oneline -5              # find a commit before the one you want re-applied
+echo "<older-sha>" > .simulated-cd-last-applied-commit
+
+# Common failure: script exits immediately with a merge/fast-forward error
+# -> means local main has diverged from origin/main (e.g. you committed
+#    locally without pushing, or someone else pushed a conflicting
+#    commit). The script only ever fast-forwards - it won't merge or
+#    rebase for you. Resolve manually with git pull/rebase, then restart
+#    the script.
+
+# Common failure: "nothing to do" every poll, even though you pushed a
+# k8s/ change
+# -> double check you pushed to the SAME branch the script is watching
+#    (first argument, defaults to "main"), and that `git fetch` isn't
+#    silently failing (check your network / GitHub auth in that terminal).
+```

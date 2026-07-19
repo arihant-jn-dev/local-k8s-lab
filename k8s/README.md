@@ -197,6 +197,57 @@ so the tracked manifest and the live cluster don't drift apart. This
 matters more once Phase 8 treats the YAML as the source of truth for a
 GitOps-style flow.
 
+## Simulated CD (Phase 8)
+
+Up to now, every change to the cluster happened because a human ran
+`kubectl apply` or `kubectl set image` by hand. GitOps flips that: **git
+becomes the source of truth**, and a controller continuously watches the
+repo, applying whatever's committed - a human's job becomes "commit and
+push," not "SSH somewhere and run kubectl."
+
+`scripts/simulated-cd.sh` is a deliberately minimal stand-in for what
+ArgoCD does in production:
+
+```
+./scripts/simulated-cd.sh main 15
+```
+
+Leave that running, then from anywhere (another terminal, another
+machine) commit a change to any file under `k8s/` and push it:
+
+```
+# edit e.g. k8s/07-api.yaml (change replicas, an env var, whatever)
+git add k8s/07-api.yaml
+git commit -m "scale api to 3"
+git push origin main
+```
+
+Within one poll interval, the running script detects the new commit,
+pulls, and runs `kubectl apply -f k8s/` - no `kubectl` command typed by a
+human. It also correctly does nothing when a commit doesn't touch `k8s/`
+(e.g. a docs or app-source change) - real GitOps tools make this same
+distinction by only redeploying when the tracked manifests actually
+change.
+
+### What this script deliberately does NOT do (vs. real ArgoCD)
+
+This is a learning stand-in, not a replacement - real GitOps tools like
+ArgoCD additionally give you:
+- **Drift detection & self-healing** - if someone manually
+  `kubectl edit`s a live resource, ArgoCD notices the live state no
+  longer matches git and reverts it. Our script only acts on new commits;
+  it never checks whether the cluster still matches the last-applied one.
+- **A UI showing sync status, diffs, and history** per-application.
+- **Health assessment** beyond "did `kubectl apply` exit 0" - ArgoCD
+  tracks whether the actual rollout succeeded (Pods healthy, etc).
+- **Multi-app/multi-cluster management**, RBAC, SSO, webhooks instead of
+  polling, and a proper reconciliation loop instead of a `sleep` loop.
+
+The core idea we're demonstrating - git as source of truth, a
+continuously-running sync loop, automatic apply on change - is the same
+one ArgoCD is built around, just without all the production-grade
+tooling around it.
+
 ## Concepts introduced in this phase
 
 - **Node** - a machine (physical or virtual) in the cluster. Minikube gives

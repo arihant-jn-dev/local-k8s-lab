@@ -20,5 +20,5 @@ no real registry, no real cluster, no auth/TLS. See
 - [x] Phase 5 - Scaling (5 replicas, verified load-balancing across all pods via scripts/hammer-pod.sh)
 - [x] Phase 6 - Rolling updates (V1 -> V2 via /version endpoint, readiness-gated rollout, rollback verified)
 - [x] Phase 7 - Redis + worker flow end-to-end (single job + burst-of-3 sequential draining, verified via logs/queue length/Postgres)
-- [ ] Phase 8 - Simulated CD
+- [x] Phase 8 - Simulated CD (scripts/simulated-cd.sh polls git, auto-applies k8s/ changes - verified scale-down and scale-up round trips via real git push)
 - [ ] Phase 9 - GitHub Actions CI
