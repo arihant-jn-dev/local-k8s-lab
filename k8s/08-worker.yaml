@@ -1,0 +1,50 @@
+# Worker Deployment - no Service, because nothing needs to reach the
+# worker over the network. It only reaches OUT to Redis and Postgres; it
+# never receives inbound traffic, so a Service (whose whole purpose is
+# giving something a stable address for OTHERS to call) wouldn't do
+# anything useful here.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: worker
+  namespace: local-k8s-lab
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: worker
+  template:
+    metadata:
+      labels:
+        app: worker
+    spec:
+      containers:
+        - name: worker
+          image: k8s-lab-worker:v1
+          imagePullPolicy: Never
+          env:
+            - name: PGHOST
+              valueFrom:
+                configMapKeyRef: { name: app-config, key: PGHOST }
+            - name: PGPORT
+              valueFrom:
+                configMapKeyRef: { name: app-config, key: PGPORT }
+            - name: PGDATABASE
+              valueFrom:
+                configMapKeyRef: { name: app-config, key: PGDATABASE }
+            - name: REDIS_HOST
+              valueFrom:
+                configMapKeyRef: { name: app-config, key: REDIS_HOST }
+            - name: REDIS_PORT
+              valueFrom:
+                configMapKeyRef: { name: app-config, key: REDIS_PORT }
+            - name: PGUSER
+              valueFrom:
+                secretKeyRef: { name: app-secret, key: PGUSER }
+            - name: PGPASSWORD
+              valueFrom:
+                secretKeyRef: { name: app-secret, key: PGPASSWORD }
+          # No readiness/liveness probes here - the worker doesn't expose
+          # an HTTP endpoint (or any port) we could probe. A more advanced
+          # setup might add a tiny internal health-check port just for
+          # this, but that's unnecessary complexity for a learning project.

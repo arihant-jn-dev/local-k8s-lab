@@ -1,0 +1,110 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: api
+  namespace: local-k8s-lab
+spec:
+  replicas: 5   # Bumped from 1 in Phase 5 to demonstrate load-balancing across
+                # Pods via the /pod endpoint (scripts/hammer-pod.sh).
+  strategy:
+    # RollingUpdate replaces old Pods with new ones a few at a time instead
+    # of killing everything then starting fresh (that alternative is
+    # "Recreate" - causes a full outage during the switch). This is
+    # already the default strategy for Deployments, but we spell it out
+    # here since Phase 6 is specifically about understanding it.
+    type: RollingUpdate
+    rollingUpdate:
+      maxUnavailable: 1   # At most 1 Pod below the desired count can be missing
+                          # at any point during the rollout - keeps the API mostly
+                          # at full capacity throughout.
+      maxSurge: 1         # At most 1 EXTRA Pod (above the desired count) can exist
+                          # temporarily while new ones are starting, before an old
+                          # one is torn down.
+  selector:
+    matchLabels:
+      app: api
+  template:
+    metadata:
+      labels:
+        app: api
+    spec:
+      containers:
+        - name: api
+          # This image must already exist inside Minikube's own Docker
+          # daemon - `minikube image load k8s-lab-api:v2` copies it there,
+          # since we're not pushing to any real registry (see k8s/README.md).
+          # Bumped from v1 -> v2 in Phase 6 to demonstrate a rolling update;
+          # `kubectl set image` and `kubectl rollout undo` both work
+          # against this same field without editing the file, but editing
+          # the file + `kubectl apply` keeps the YAML as the source of
+          # truth (important context for Phase 8's simulated GitOps).
+          image: k8s-lab-api:v2
+          imagePullPolicy: Never   # Never try to pull from a registry - only use
+                                   # what's already loaded into Minikube. Without this,
+                                   # Kubernetes defaults to trying (and failing) to pull
+                                   # "k8s-lab-api:v1" from Docker Hub.
+          ports:
+            - containerPort: 3000
+          env:
+            - name: PORT
+              value: "3000"
+            - name: PGHOST
+              valueFrom:
+                configMapKeyRef: { name: app-config, key: PGHOST }
+            - name: PGPORT
+              valueFrom:
+                configMapKeyRef: { name: app-config, key: PGPORT }
+            - name: PGDATABASE
+              valueFrom:
+                configMapKeyRef: { name: app-config, key: PGDATABASE }
+            - name: REDIS_HOST
+              valueFrom:
+                configMapKeyRef: { name: app-config, key: REDIS_HOST }
+            - name: REDIS_PORT
+              valueFrom:
+                configMapKeyRef: { name: app-config, key: REDIS_PORT }
+            - name: PGUSER
+              valueFrom:
+                secretKeyRef: { name: app-secret, key: PGUSER }
+            - name: PGPASSWORD
+              valueFrom:
+                secretKeyRef: { name: app-secret, key: PGPASSWORD }
+          readinessProbe:
+            # Gates whether the Service sends traffic to this Pod. This
+            # ALSO gates the rolling update itself: Kubernetes won't
+            # consider a newly-created Pod "successfully rolled out" and
+            # move on to replacing the next old Pod until this probe
+            # passes - so a broken new image just sits there failing
+            # readiness instead of taking down the whole Service.
+            httpGet:
+              path: /health
+              port: 3000
+            initialDelaySeconds: 3
+            periodSeconds: 5
+          livenessProbe:
+            # If this fails repeatedly, Kubernetes kills and restarts the
+            # container - readiness just pulls it out of rotation,
+            # liveness assumes it's stuck/broken and needs a restart.
+            httpGet:
+              path: /health
+              port: 3000
+            initialDelaySeconds: 10
+            periodSeconds: 10
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: api
+  namespace: local-k8s-lab
+spec:
+  selector:
+    app: api
+  ports:
+    - port: 3000
+      targetPort: 3000
+  type: NodePort
+  # NodePort exposes this Service on a fixed port on every Node's own IP
+  # (unlike ClusterIP, which is only reachable inside the cluster). We use
+  # this so we can reach the API from our host machine via
+  # `minikube service api -n local-k8s-lab` without needing an Ingress yet
+  # (that comes in Phase 4).

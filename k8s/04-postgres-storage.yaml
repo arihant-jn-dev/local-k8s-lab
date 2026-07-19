@@ -1,0 +1,51 @@
+# PersistentVolume (PV) + PersistentVolumeClaim (PVC) - together these give
+# Postgres disk storage that survives Pod restarts. Without this, a Pod
+# restart would wipe the database, because a Pod's own filesystem is
+# ephemeral (destroyed when the Pod dies).
+#
+# The PV represents an actual piece of storage (here, a directory on the
+# Minikube VM's disk). The PVC is a *request* for storage that a Pod can
+# reference - PVC and PV get "bound" together by Kubernetes based on
+# matching size/accessMode. This indirection (PV vs PVC) exists so that
+# Pods don't need to know HOW storage is provisioned (local disk, cloud
+# disk, NFS, etc) - they just ask for a PVC.
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: postgres-pv
+  # PVs are cluster-scoped (not namespaced) - storage is a cluster-level
+  # resource, so there's no `namespace:` field here.
+spec:
+  capacity:
+    storage: 1Gi        # How much storage this PV provides.
+  accessModes:
+    - ReadWriteOnce      # Can be mounted read-write by a single node at a time -
+                         # fine for us since we only run one Postgres Pod.
+  hostPath:
+    # hostPath = use a directory on the node's (Minikube VM's) own
+    # filesystem. This only works because Minikube runs a single node -
+    # in a real multi-node cluster you'd use a networked storage backend
+    # instead, since hostPath ties data to one specific node.
+    path: /data/postgres-pv
+    # DirectoryOrCreate makes Kubernetes create this directory on the node
+    # if it doesn't already exist. Without it, hostPath expects the path
+    # to pre-exist and the Pod fails with "no such file or directory".
+    type: DirectoryOrCreate
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: postgres-pvc
+  namespace: local-k8s-lab   # PVCs ARE namespaced, unlike PVs.
+spec:
+  # Empty string (not omitted) tells Kubernetes "don't use the cluster's
+  # default StorageClass" - without this, Minikube's default StorageClass
+  # auto-provisions a fresh volume instead of binding to the hostPath PV
+  # we defined above, which would silently skip the PV/PVC binding this
+  # file is meant to demonstrate.
+  storageClassName: ""
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 1Gi     # Must be <= the PV's capacity for Kubernetes to bind them.

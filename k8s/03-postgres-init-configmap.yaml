@@ -1,0 +1,29 @@
+# A second ConfigMap, but this one holds a whole file (init.sql) instead of
+# simple key-value config. Kubernetes lets a ConfigMap's data values be
+# arbitrary strings, including multi-line file contents - when mounted as a
+# volume (see the Postgres Deployment), each key becomes a filename and its
+# value becomes that file's contents. This replaces the bind mount
+# `./init.sql:/docker-entrypoint-initdb.d/init.sql:ro` we used in Compose -
+# Kubernetes has no host filesystem to bind-mount from, so the file's
+# contents have to live inside a cluster object instead.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: postgres-init
+  namespace: local-k8s-lab
+data:
+  init.sql: |
+    CREATE TABLE users (
+      id SERIAL PRIMARY KEY,
+      name TEXT NOT NULL,
+      email TEXT NOT NULL,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    );
+
+    CREATE TABLE jobs (
+      id SERIAL PRIMARY KEY,
+      payload JSONB NOT NULL,
+      status TEXT NOT NULL,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      completed_at TIMESTAMPTZ
+    );

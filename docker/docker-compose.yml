@@ -1,0 +1,81 @@
+services:
+  # Postgres - stores users and job results.
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: appuser
+      POSTGRES_PASSWORD: apppassword
+      POSTGRES_DB: appdb
+    ports:
+      # Exposed to the host so you can psql in directly while learning/debugging.
+      - "5432:5432"
+    volumes:
+      # Named volume - Postgres data survives `docker compose down` (but not
+      # `docker compose down -v`). Without this, every restart wipes the DB.
+      - pgdata:/var/lib/postgresql/data
+      # Mounted read-only into the init directory - postgres runs this once
+      # against a fresh (empty) data directory to create our tables.
+      - ./init.sql:/docker-entrypoint-initdb.d/init.sql:ro
+    healthcheck:
+      # Compose's `depends_on: condition: service_healthy` needs this to
+      # know when Postgres is actually ready to accept connections, not
+      # just when the container process has started.
+      test: ["CMD-SHELL", "pg_isready -U appuser -d appdb"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  # Redis - the job queue between api and worker.
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  api:
+    build:
+      # Build context is the repo root (one level up from docker/) because
+      # the Dockerfile needs to COPY api/ - same reasoning as Phase 1.
+      context: ..
+      dockerfile: docker/Dockerfile.api
+    ports:
+      - "3000:3000"
+    environment:
+      PORT: 3000
+      PGHOST: postgres
+      PGPORT: 5432
+      PGUSER: appuser
+      PGPASSWORD: apppassword
+      PGDATABASE: appdb
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  worker:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile.worker
+    environment:
+      PGHOST: postgres
+      PGPORT: 5432
+      PGUSER: appuser
+      PGPASSWORD: apppassword
+      PGDATABASE: appdb
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+volumes:
+  pgdata:

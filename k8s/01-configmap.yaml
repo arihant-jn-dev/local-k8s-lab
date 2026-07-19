@@ -1,0 +1,23 @@
+# A ConfigMap holds non-secret configuration as key-value pairs, kept
+# separate from application code/images. Pods read these values as
+# environment variables (see the Deployments) instead of us hardcoding
+# hostnames/ports into the app - this is the same env-var pattern we used
+# in Phase 2's docker-compose.yml, just sourced from Kubernetes now instead
+# of Compose.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: app-config
+  namespace: local-k8s-lab   # Must match the Namespace we created in 00-namespace.yaml -
+                             # ConfigMaps are namespaced, so this ties it to our project.
+data:
+  # Kubernetes Services (created in later files) give every Service a
+  # stable DNS name equal to its metadata.name, resolvable from any Pod in
+  # the same namespace. So "postgres" and "redis" below aren't IPs or
+  # container names like in Compose - they're Service names that
+  # Kubernetes' internal DNS resolves automatically.
+  PGHOST: "postgres"
+  PGPORT: "5432"
+  PGDATABASE: "appdb"
+  REDIS_HOST: "redis"
+  REDIS_PORT: "6379"

@@ -1,0 +1,34 @@
+# Base image: small Node runtime. "alpine" = minimal Linux distro, keeps the
+# image size down. We don't need anything fancier for a learning project.
+FROM node:20-alpine
+
+# All subsequent commands (COPY, RUN, CMD) run relative to this directory
+# inside the image. Docker creates it if it doesn't exist.
+WORKDIR /app
+
+# Copy just the dependency manifest first (not the whole app). Docker caches
+# each instruction as a layer - if package.json hasn't changed, Docker
+# reuses the cached "npm install" layer instead of re-running it, so
+# rebuilds are much faster when you only change app code.
+COPY api/package.json ./
+
+RUN npm install --omit=dev
+
+# Now copy the rest of the app source.
+COPY api/ ./
+
+# ARG is only available at build time (not inside the running container).
+# ENV makes it a real runtime env var baked into the image, so `docker
+# build --build-arg VERSION=V2` produces an image that reports itself as
+# V2 without needing any code change - this is what lets Phase 6 build two
+# distinct, independently-versioned images from the same Dockerfile.
+ARG VERSION=V1
+ENV VERSION=${VERSION}
+
+# Documents which port the app listens on. This does NOT actually publish
+# the port - it's metadata for humans/tools. Publishing happens with
+# `docker run -p` or in docker-compose.yml.
+EXPOSE 3000
+
+# The command that runs when a container starts from this image.
+CMD ["node", "index.js"]

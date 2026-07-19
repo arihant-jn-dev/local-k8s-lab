@@ -1,0 +1,38 @@
+# An Ingress routes external HTTP(S) traffic to internal Services based on
+# hostname/path rules - it's the "front door" of the cluster. Without it,
+# the only ways to reach a Service from outside are NodePort (a raw port
+# number, what we used in Phase 3) or `kubectl port-forward`. An Ingress
+# gives you real hostname-based routing instead, which is how traffic
+# actually reaches services in most real clusters.
+#
+# An Ingress resource by itself does nothing - it just declares routing
+# rules. Something has to actually implement them: an Ingress Controller
+# (here, the NGINX one enabled via `minikube addons enable ingress`) watches
+# for Ingress objects and configures itself (an actual running NGINX
+# instance) to match.
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: api-ingress
+  namespace: local-k8s-lab
+spec:
+  ingressClassName: nginx   # Tells Kubernetes which Ingress Controller should handle
+                            # this object - matters once a cluster has more than one
+                            # (we only have the nginx one Minikube installed).
+  rules:
+    - host: app.local   # Only matches requests with this Host header - not a real
+                         # domain, just a name we map to 127.0.0.1 in /etc/hosts
+                         # (see k8s/README.md) so we can test it locally.
+      http:
+        paths:
+          - path: /
+            pathType: Prefix   # Matches any path starting with "/" - i.e. everything.
+                               # Prefix is one of Kubernetes' path-matching modes
+                               # (others: Exact, ImplementationSpecific).
+            backend:
+              service:
+                name: api   # Routes to the "api" Service we created in Phase 3 -
+                            # NOT directly to Pods. The Service still does its own
+                            # load-balancing across whichever Pods match its selector.
+                port:
+                  number: 3000

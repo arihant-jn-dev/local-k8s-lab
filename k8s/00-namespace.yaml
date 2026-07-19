@@ -1,0 +1,13 @@
+# A Namespace is a way to partition a single Kubernetes cluster into
+# separate "virtual clusters" - it groups related resources together and
+# lets you refer to them without colliding with resources of the same name
+# in other namespaces. Everything we create for this project lives in the
+# "local-k8s-lab" namespace instead of the cluster's default "default"
+# namespace, so it's easy to see (and delete) as one unit.
+apiVersion: v1        # Every K8s object declares which API group/version defines its schema.
+                       # Namespace is a "core" resource, so its version is just "v1"
+                       # (no group prefix, unlike apps/v1 for Deployments).
+kind: Namespace        # The type of object we're creating.
+metadata:
+  name: local-k8s-lab  # The namespace's name. We'll reference this name in every
+                       # other manifest's metadata.namespace field.

@@ -1,0 +1,17 @@
+# Same base image as the API - keeps things consistent and simple.
+FROM node:20-alpine
+
+WORKDIR /app
+
+# Copy manifest first for the same Docker layer-caching reason as the API
+# Dockerfile: unchanged dependencies mean this layer gets reused on rebuild.
+COPY worker/package.json ./
+
+RUN npm install --omit=dev
+
+COPY worker/ ./
+
+# No EXPOSE here - the worker doesn't listen on any port, it only polls
+# Redis and writes to Postgres, so there's nothing for other containers to
+# connect to on this one.
+CMD ["node", "index.js"]

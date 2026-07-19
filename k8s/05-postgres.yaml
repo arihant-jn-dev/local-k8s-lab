@@ -1,0 +1,116 @@
+# Deployment - describes the DESIRED state for a set of identical Pods
+# (which container image, how many replicas, env vars, volumes, etc).
+# Kubernetes' control loop constantly compares desired vs. actual state and
+# creates/deletes Pods to reconcile them. A Deployment doesn't manage Pods
+# directly - it creates a ReplicaSet, which is the thing that actually
+# creates and watches over the Pods. You almost never touch ReplicaSets
+# directly; Deployments manage them for you (this matters later for
+# rolling updates, which work by creating a new ReplicaSet and scaling the
+# old one down).
+apiVersion: apps/v1   # Deployment lives in the "apps" API group, hence "apps/v1"
+                      # instead of the plain "v1" the core resources use.
+kind: Deployment
+metadata:
+  name: postgres
+  namespace: local-k8s-lab
+spec:
+  replicas: 1   # Only one Postgres Pod - running multiple Postgres replicas
+                # safely needs real replication setup, out of scope here.
+  selector:
+    # Tells the Deployment which Pods belong to it, by label match. This
+    # must match template.metadata.labels below exactly, or the Deployment
+    # won't recognize the Pods it just created as its own.
+    matchLabels:
+      app: postgres
+  template:
+    # This is a Pod template - the blueprint the Deployment stamps out
+    # every time it creates a Pod. A Pod is the smallest deployable unit in
+    # Kubernetes: one or more containers that share networking/storage and
+    # always get scheduled together onto the same Node (a physical/virtual
+    # machine in the cluster - here, the single Minikube VM). The
+    # Scheduler is the control-plane component that decides which Node a
+    # new Pod lands on.
+    metadata:
+      labels:
+        app: postgres   # Must match spec.selector.matchLabels above.
+    spec:
+      containers:
+        - name: postgres
+          image: postgres:16-alpine   # Same image as Phase 2's Compose setup.
+          ports:
+            - containerPort: 5432
+          env:
+            # POSTGRES_USER/PASSWORD/DB are env vars the official postgres
+            # image reads to initialize itself on first boot - same
+            # mechanism as Compose's `environment:` block, just sourced
+            # from our ConfigMap/Secret instead of literal values.
+            - name: POSTGRES_USER
+              valueFrom:
+                secretKeyRef:      # Pulls one specific key out of a Secret.
+                  name: app-secret
+                  key: PGUSER
+            - name: POSTGRES_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: app-secret
+                  key: PGPASSWORD
+            - name: POSTGRES_DB
+              valueFrom:
+                configMapKeyRef:   # Pulls one specific key out of a ConfigMap.
+                  name: app-config
+                  key: PGDATABASE
+          volumeMounts:
+            # Mounts the PVC (real disk storage) at Postgres's actual data
+            # directory, so writes survive Pod restarts.
+            - name: postgres-storage
+              mountPath: /var/lib/postgresql/data
+              # Postgres refuses to start if its data directory isn't
+              # empty AND doesn't look like a fresh Postgres data dir.
+              # hostPath volumes can pre-create the mount point with
+              # extra hidden files, so this subPath keeps Postgres's data
+              # in a clean subdirectory instead of the volume's root.
+              subPath: pgdata
+            # Mounts our init.sql ConfigMap into the directory the
+            # official postgres image scans for init scripts on first
+            # boot - same purpose as Compose's bind mount in Phase 2.
+            - name: postgres-init
+              mountPath: /docker-entrypoint-initdb.d
+          readinessProbe:
+            # Readiness probes tell Kubernetes when a Pod is ready to
+            # receive traffic. Until this passes, the Service (below) won't
+            # route requests to this Pod - important because Postgres takes
+            # a few seconds to finish starting up after the container process launches.
+            exec:
+              command: ["pg_isready", "-U", "appuser", "-d", "appdb"]
+            initialDelaySeconds: 5
+            periodSeconds: 5
+      volumes:
+        - name: postgres-storage
+          persistentVolumeClaim:
+            claimName: postgres-pvc
+        - name: postgres-init
+          configMap:
+            name: postgres-init
+---
+# A Service gives a stable network identity (a DNS name + virtual IP) to a
+# set of Pods, since individual Pods are ephemeral and get new IPs whenever
+# they're recreated. Other Pods reach Postgres via the Service name
+# "postgres" (set in our ConfigMap's PGHOST value) instead of tracking pod
+# IPs directly - Kubernetes' internal DNS (CoreDNS) resolves that name to
+# the Service, which then load-balances to whichever Pod(s) match its
+# selector.
+apiVersion: v1
+kind: Service
+metadata:
+  name: postgres
+  namespace: local-k8s-lab
+spec:
+  selector:
+    app: postgres   # Routes traffic to any Pod with this label - matches the
+                    # Deployment's Pod template labels above.
+  ports:
+    - port: 5432        # Port the Service itself listens on.
+      targetPort: 5432  # Port on the Pod/container to forward to.
+  # No "type:" field means this defaults to ClusterIP - only reachable from
+  # inside the cluster. That's exactly what we want for Postgres: it should
+  # never be exposed outside the cluster.
