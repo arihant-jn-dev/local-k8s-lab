@@ -21,8 +21,29 @@ host/port) come from environment variables - see `docker/docker-compose.yml`
 for how they're set today. In Kubernetes (Phase 3) the non-secret values
 move to a ConfigMap and the password moves to a Secret.
 
+## Testing
+
+`index.test.js` has smoke tests for `/health`, `/pod`, and `/version` -
+the routes that don't need a real Postgres/Redis connection - using
+Node's built-in test runner (`node:test`), no extra dependency needed:
+
+```
+npm test
+```
+
+The Express `app` is exported from `index.js` and only calls `start()`
+(which connects to Redis and calls `app.listen`) when the file is run
+directly (`require.main === module`) - this is what lets the test file
+`require('./index.js')` and get a bare, testable app without needing a
+live Redis to import the module at all.
+
+`/users` and `/jobs` aren't covered here since they need a real
+Postgres/Redis - see `docs/debugging.md`'s CI section for the trade-off.
+
 ## How it connects to the rest of the system
 - Talks to Redis to enqueue jobs (worker/ picks them up).
 - Talks to Postgres directly for user CRUD.
 - Gets containerized by `docker/Dockerfile.api`.
 - Gets deployed as a Kubernetes Deployment + Service starting Phase 3.
+- `npm test` runs automatically on every push/PR via
+  `.github/workflows/ci.yml` (Phase 9).

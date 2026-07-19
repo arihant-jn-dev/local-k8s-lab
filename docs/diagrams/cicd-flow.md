@@ -1,4 +1,35 @@
-# Simulated CD: git as source of truth
+# CI/CD flow: from push to running Pods
+
+## Phase 9 - CI (GitHub Actions) - verifies the code
+
+```
+        git push / pull request
+you -----------------------------> GitHub
+                                       |
+                                       v
+                          .github/workflows/ci.yml
+                                       |
+                    +------------------+------------------+
+                    v                                      v
+              api job                                worker job
+        checkout -> npm ci                       checkout -> npm ci
+        -> npm test                               -> docker build
+        -> docker build                           (no tests yet)
+                    |                                      |
+                    +------------------+------------------+
+                                       v
+                          pass/fail shown on the
+                          commit / pull request
+```
+
+CI answers one question: **is this change good?** It never touches the
+cluster - the Docker images it builds are thrown away when the job ends
+(this project has no registry to push them to; see the disabled
+"push to registry" step in `ci.yml` for what a real pipeline would do
+here). If tests fail or the Docker build breaks, that shows up directly
+on the commit/PR in GitHub - before anything gets anywhere near Minikube.
+
+## Phase 8 - CD (simulated-cd.sh) - deploys verified manifest changes
 
 ## Before Phase 8 - manual deploys
 
@@ -63,3 +94,24 @@ won't fix it. ArgoCD continuously compares live state to desired (git)
 state and self-heals drift in either direction, which is the piece we're
 deliberately not building here (see `k8s/README.md` for the full list of
 gaps).
+
+## Putting CI and CD together
+
+```
+you --push--> GitHub --> CI (ci.yml): test + build, never deploys
+                |
+                | (in a REAL pipeline: push image, bump manifest tag)
+                | (in THIS project: these two are manual/separate -
+                |  see .github/workflows/README.md for why)
+                v
+        k8s/*.yaml committed --> CD (simulated-cd.sh): pulls + kubectl apply
+                                        |
+                                        v
+                                    cluster
+```
+
+CI and CD answer different questions - "is this change good?" vs. "is
+this change running?" - and this project deliberately keeps them as two
+separate, independently-understandable pieces rather than one pipeline
+that does everything, so each is simple enough to reason about on its
+own.

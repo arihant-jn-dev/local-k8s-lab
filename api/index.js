@@ -87,4 +87,13 @@ async function start() {
   });
 }
 
-start();
+// Only boot the server (and its Redis connection) when this file is run
+// directly - e.g. `node index.js` or the Dockerfile's CMD. When the test
+// file below does `require('./index.js')` instead, it gets the bare
+// Express `app` without triggering a real network connection, which is
+// what lets /health and /pod be tested with no Postgres/Redis running.
+if (require.main === module) {
+  start();
+}
+
+module.exports = app;

@@ -1,0 +1,106 @@
+# GitHub Actions CI - runs on every push/PR. This is the "CI" half of
+# CI/CD: it verifies the code is good (installs, passes tests, builds a
+# Docker image) but never deploys anywhere - deploying happens separately
+# (in a real setup, that's what "CD" / Phase 8's simulated-cd.sh is for).
+name: CI
+
+# Run on every push to main and on every pull request targeting main -
+# this is what makes it "continuous": every change gets checked
+# automatically, not just when someone remembers to run tests locally.
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  api:
+    # GitHub-hosted runner - a fresh Ubuntu VM spun up just for this job,
+    # thrown away afterward. Nothing persists between runs except what you
+    # explicitly cache.
+    runs-on: ubuntu-latest
+    steps:
+      # actions/checkout is a reusable "Action" (a packaged step) that
+      # clones this repo's code onto the runner - without it, the runner
+      # starts as an empty VM with no access to your source at all.
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          # Caches ~/.npm keyed on package-lock.json so repeat runs don't
+          # re-download every dependency from the registry every time.
+          cache: 'npm'
+          cache-dependency-path: api/package-lock.json
+
+      - name: Install dependencies
+        working-directory: api
+        run: npm ci
+        # npm ci (not npm install) installs EXACTLY what's in
+        # package-lock.json and fails if the lockfile is out of sync with
+        # package.json - stricter and faster than npm install, which is
+        # exactly what you want in CI (reproducible builds, not "whatever
+        # happens to resolve today").
+
+      - name: Run tests
+        working-directory: api
+        run: npm test
+
+      - name: Build Docker image
+        # Builds the image to prove the Dockerfile still works and the
+        # app still boots inside a container - this does NOT get used
+        # anywhere after the job ends, since this workflow never deploys.
+        run: docker build -f docker/Dockerfile.api -t k8s-lab-api:ci .
+
+      - name: "Push to registry (not run - see docs/debugging.md CI section)"
+        if: false
+        # This step is deliberately never executed (`if: false`) since this
+        # project has no real registry to push to - Minikube images get
+        # loaded locally instead (see k8s/README.md). In a real production
+        # setup, this step would look something like:
+        #
+        #   - name: Log in to registry
+        #     uses: docker/login-action@v3
+        #     with:
+        #       registry: ghcr.io
+        #       username: ${{ github.actor }}
+        #       password: ${{ secrets.GITHUB_TOKEN }}
+        #
+        #   - name: Push image
+        #     run: |
+        #       docker tag k8s-lab-api:ci ghcr.io/${{ github.repository }}/api:${{ github.sha }}
+        #       docker push ghcr.io/${{ github.repository }}/api:${{ github.sha }}
+        #
+        # The image would be tagged with the git commit SHA (traceability -
+        # you can always tell exactly which commit produced a given image)
+        # and pushed to a registry (GitHub Container Registry, Docker Hub,
+        # ECR, etc). A real CD step would then update a k8s manifest's
+        # image tag to point at this new image and let something like
+        # ArgoCD (or our scripts/simulated-cd.sh) roll it out.
+        run: echo "This step is illustrative only - see comments above."
+
+  worker:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: worker/package-lock.json
+
+      - name: Install dependencies
+        working-directory: worker
+        run: npm ci
+
+      # No `npm test` here - the worker has no test suite yet (it's a
+      # simple polling loop with no pure/stateless logic to unit test the
+      # way api/'s /health and /pod routes allow). See docs/debugging.md.
+
+      - name: Build Docker image
+        run: docker build -f docker/Dockerfile.worker -t k8s-lab-worker:ci .

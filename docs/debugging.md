@@ -303,3 +303,40 @@ echo "<older-sha>" > .simulated-cd-last-applied-commit
 #    (first argument, defaults to "main"), and that `git fetch` isn't
 #    silently failing (check your network / GitHub auth in that terminal).
 ```
+
+## GitHub Actions CI (Phase 9)
+
+```
+# Run the same commands CI runs, locally, before pushing - catches most
+# failures without waiting on a CI run
+cd api && npm ci && npm test
+cd worker && npm ci
+docker build -f docker/Dockerfile.api -t k8s-lab-api:ci .
+docker build -f docker/Dockerfile.worker -t k8s-lab-worker:ci .
+
+# View past runs / logs from the CLI instead of the GitHub web UI
+gh run list
+gh run view <run-id> --log
+
+# Common failure: `npm ci` fails with "package-lock.json out of sync with
+# package.json" or similar
+# -> package-lock.json wasn't committed, or was hand-edited, or you added
+#    a dependency locally with `npm install` but didn't commit the
+#    updated lockfile. Run `npm install` locally to regenerate it, then
+#    commit package-lock.json.
+
+# Common failure: tests hang/timeout in CI but pass locally
+# -> our api/index.test.js only exercises /health, /pod, /version -
+#    routes that don't touch Postgres/Redis. If you add a test that hits
+#    /users or /jobs, it needs a real Postgres/Redis running in the CI job
+#    (via a `services:` block in the workflow) or it'll hang trying to
+#    connect to a host that doesn't exist in that environment.
+
+# Why the "push to registry" step is disabled (if: false) instead of
+# deleted
+# -> this project has no real registry to push to (see k8s/README.md -
+#    Minikube images get loaded locally with `minikube image load`
+#    instead). The step is kept, commented, and explained rather than
+#    removed so the CI file still shows what a real pipeline's remaining
+#    step would look like.
+```
