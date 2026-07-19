@@ -4,8 +4,8 @@ metadata:
   name: api
   namespace: local-k8s-lab
 spec:
-  replicas: 5   # Bumped from 1 in Phase 5 to demonstrate load-balancing across
-                # Pods via the /pod endpoint (scripts/hammer-pod.sh).
+  replicas: 3   # Phase 8 simulated-CD test: dropped from 5 to 3 to prove the
+                # sync loop picks up a real manifest change end-to-end.
   strategy:
     # RollingUpdate replaces old Pods with new ones a few at a time instead
     # of killing everything then starting fresh (that alternative is
