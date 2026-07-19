@@ -271,3 +271,5 @@ kubectl exec -n local-k8s-lab deployment/worker -- printenv | grep -E "PG|REDIS"
 # worker replica even with several running:
 kubectl scale deployment worker --replicas=3 -n local-k8s-lab
 ```
+
+<!-- phase 8 test: doc-only change, should NOT trigger simulated-cd apply -->
